@@ -1,0 +1,6 @@
+{
+  "name": "Cópia Amiga",
+  "description": "Uma ferramenta acolhedora para transformar textos e fotos de tarefas escolares em pequenas partes fáceis de copiar para o caderno, oferecendo reforços positivos e pontos para crianças com TEA e TDAH.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
