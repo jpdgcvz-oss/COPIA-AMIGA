@@ -82,6 +82,26 @@ export default function App() {
     };
   });
 
+  // Helper for student custom lessons storage
+  const getStoredStudentLessons = (): AdaptedLesson[] => {
+    try {
+      const raw = localStorage.getItem("copy_play_student_custom_lessons");
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const saveStudentLessonToStorage = (lesson: AdaptedLesson) => {
+    try {
+      const current = getStoredStudentLessons();
+      const updated = [lesson, ...current.filter(l => l.id !== lesson.id)];
+      localStorage.setItem("copy_play_student_custom_lessons", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save student lesson to local storage", e);
+    }
+  };
+
   // State for merged lessons (demo + teacher-created + custom-local)
   const [lessons, setLessons] = useState<AdaptedLesson[]>(DEMO_LESSONS);
   const [teacherCreatedLessons, setTeacherCreatedLessons] = useState<AdaptedLesson[]>([]);
@@ -270,9 +290,17 @@ export default function App() {
     }
   }, [activeLessonId]);
 
-  // Combine demo lessons with teacher created lessons
+  // Combine demo lessons, student custom lessons, and teacher created lessons
   useEffect(() => {
-    setLessons([...teacherCreatedLessons, ...DEMO_LESSONS]);
+    const studentCustom = getStoredStudentLessons();
+    // Avoid duplicate IDs
+    const teacherAndStudent = [...teacherCreatedLessons];
+    studentCustom.forEach(sl => {
+      if (!teacherAndStudent.some(tl => tl.id === sl.id)) {
+        teacherAndStudent.push(sl);
+      }
+    });
+    setLessons([...teacherAndStudent, ...DEMO_LESSONS]);
   }, [teacherCreatedLessons]);
 
   // Handle Google Login (Gmail)
@@ -546,6 +574,7 @@ export default function App() {
         alert("Lição criada de sua fala e enviada aos alunos com sucesso! 🎒✨");
         setActiveScreen("home");
       } else {
+        saveStudentLessonToStorage(newLesson);
         setTeacherCreatedLessons(prev => [newLesson, ...prev]);
         setActiveLessonId(newLesson.id);
         setCurrentChunkIndex(0);
@@ -723,6 +752,7 @@ export default function App() {
         setActiveScreen("home");
       } else {
         // Saved locally for independent students
+        saveStudentLessonToStorage(newLesson);
         setTeacherCreatedLessons(prev => [newLesson, ...prev]);
         setActiveLessonId(newLesson.id);
         setCurrentChunkIndex(0);
@@ -1334,13 +1364,54 @@ export default function App() {
                   </div>
                 )}
 
+                {/* STUDENT ACTION CARD: CREATE OWN LESSON */}
+                <div id="box-student-create-lesson" className="bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-white rounded-3xl p-5 md:p-6 shadow-md hover:shadow-lg transition-all flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="space-y-1 text-center md:text-left">
+                    <div className="inline-flex items-center gap-1.5 bg-white/20 px-3 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider text-amber-950">
+                      <Sparkles size={12} /> Crie Sua Atividade
+                    </div>
+                    <h4 className="font-display font-black text-lg md:text-xl text-white">
+                      Quer treinar com seu próprio livro ou dever? 🎒
+                    </h4>
+                    <p className="text-amber-50 text-xs font-semibold leading-relaxed max-w-lg">
+                      Tire foto de uma folha de papel ou livro escolar, ou digite um texto. Nossa IA vai transformar tudo em frases fáceis de copiar!
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5 w-full md:w-auto justify-center">
+                    <button
+                      id="btn-student-photo-lesson"
+                      onClick={() => { triggerClick(); setUploadTab("image"); setActiveScreen("add-lesson"); setShowLessonCameraCapture(true); }}
+                      className="bg-white text-amber-700 hover:bg-amber-50 font-display font-black text-xs px-4 py-3 rounded-2xl shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer flex-1 md:flex-none"
+                    >
+                      <Camera size={16} /> Fotografar Tarefa 📸
+                    </button>
+                    <button
+                      id="btn-student-text-lesson"
+                      onClick={() => { triggerClick(); setUploadTab("text"); setActiveScreen("add-lesson"); }}
+                      className="bg-amber-900/40 hover:bg-amber-900/60 text-white font-display font-bold text-xs px-4 py-3 rounded-2xl border border-white/20 shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer flex-1 md:flex-none"
+                    >
+                      <Plus size={16} /> Criar por Texto ✍️
+                    </button>
+                  </div>
+                </div>
+
                 {/* LESSONS LIST */}
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="font-display font-black text-xl flex items-center gap-2">
                       Sua Coleção de Lições 📚
                     </h3>
-                    <span className="text-xs font-bold text-slate-400">{lessons.length} disponíveis</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-slate-400">{lessons.length} disponíveis</span>
+                      <button
+                        id="btn-student-add-lesson-mini"
+                        onClick={() => { triggerClick(); setActiveScreen("add-lesson"); }}
+                        className="bg-amber-500 hover:bg-amber-600 text-white font-display font-extrabold text-xs px-3.5 py-2 rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus size={16} /> Criar Atividade
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
