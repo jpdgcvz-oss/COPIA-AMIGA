@@ -162,8 +162,40 @@ export default function App() {
   const [speechError, setSpeechError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // File Input Ref
+  // File Input Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profileFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper to save user profile changes persistently (Firestore + LocalStorage)
+  const saveUpdatedProfile = async (updated: UserProfile) => {
+    setUserProfile(updated);
+    setSettings(prev => ({ ...prev, childName: updated.displayName }));
+    try {
+      localStorage.setItem(`copy_play_user_profile_${updated.uid}`, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Error writing profile to local storage:", e);
+    }
+    await saveUserProfile(updated);
+    if (updated.role === "tutor" || updated.role === "professor") {
+      if (!updated.code) {
+        updated.code = generateTeacherCode(updated.displayName);
+        await saveUserProfile(updated);
+      }
+    }
+  };
+
+  const handleProfileImageFile = async (file: File) => {
+    if (!file || !userProfile) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        const updated = { ...userProfile, customPhotoURL: dataUrl };
+        await saveUpdatedProfile(updated);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Handle active theme selection
   const currentTheme = THEMES.find(t => t.id === settings.theme) || THEMES[0];
@@ -220,6 +252,26 @@ export default function App() {
       if (firebaseUser) {
         setUser(firebaseUser);
         let profile = await getUserProfile(firebaseUser.uid);
+        
+        // Merge with local storage profile cache if available
+        try {
+          const cached = localStorage.getItem(`copy_play_user_profile_${firebaseUser.uid}`);
+          if (cached) {
+            const cachedProfile = JSON.parse(cached);
+            if (profile) {
+              profile = {
+                ...profile,
+                ...cachedProfile,
+                displayName: cachedProfile.displayName || profile.displayName,
+                customPhotoURL: cachedProfile.customPhotoURL || profile.customPhotoURL,
+              };
+            } else {
+              profile = cachedProfile;
+            }
+          }
+        } catch (e) {
+          console.error("Local profile merge error:", e);
+        }
         
         if (!profile) {
           // New register
@@ -383,13 +435,7 @@ export default function App() {
     setShowCameraCapture(false);
     if (userProfile) {
       const updatedProfile = { ...userProfile, customPhotoURL: dataUrl };
-      setUserProfile(updatedProfile);
-      await saveUserProfile(updatedProfile);
-      
-      // If linked teacher, let's update local lists
-      if (userProfile.role === "aluno" && userProfile.linkedTeacherUid) {
-        // Just triggers re-save
-      }
+      await saveUpdatedProfile(updatedProfile);
     }
   };
 
@@ -924,7 +970,7 @@ export default function App() {
           <img src={copyPlayLogo} alt="CopyPlay Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
         </div>
         <h3 className="font-display font-extrabold text-xl text-slate-800 mt-4 animate-pulse">
-          Carregando seu Copy Play...
+          Carregando seu CopyPlay...
         </h3>
         <p className="text-slate-400 text-sm font-medium mt-1">Carregando estrelas e lições mágicas!</p>
       </div>
@@ -1237,28 +1283,49 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Character Profile / Camera Capture widget */}
-              <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-100 rounded-2xl p-4 text-center min-w-[150px] relative text-slate-800">
-                <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-amber-300 mb-2">
+              {/* Character Profile / Camera & Gallery Capture widget */}
+              <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-100 rounded-2xl p-4 text-center min-w-[170px] relative text-slate-800 shrink-0">
+                <div className="relative w-20 h-20 rounded-full overflow-hidden border-3 border-amber-300 mb-2 shadow-sm group">
                   <img 
                     src={userProfile.customPhotoURL || userProfile.photoURL} 
                     alt="Seu Perfil" 
                     className="w-full h-full object-cover"
                   />
-                  <button
-                    onClick={() => { triggerClick(); setShowCameraCapture(true); }}
-                    className="absolute inset-0 bg-slate-900/60 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold"
-                  >
-                    Mudar Foto 📷
-                  </button>
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1 p-1">
+                    <button
+                      type="button"
+                      onClick={() => { triggerClick(); setShowCameraCapture(true); }}
+                      className="bg-amber-500 hover:bg-amber-600 px-2 py-1 rounded text-white text-[10px] w-full font-bold cursor-pointer"
+                    >
+                      📷 Câmera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { triggerClick(); profileFileInputRef.current?.click(); }}
+                      className="bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded text-white text-[10px] w-full font-bold cursor-pointer"
+                    >
+                      🖼️ Galeria
+                    </button>
+                  </div>
                 </div>
                 
-                <button
-                  onClick={() => { triggerClick(); setShowCameraCapture(true); }}
-                  className="text-[10px] font-bold text-amber-600 hover:underline flex items-center justify-center gap-1"
-                >
-                  <Camera size={12} /> Usar Câmera
-                </button>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { triggerClick(); setShowCameraCapture(true); }}
+                    className="text-[10px] font-bold text-amber-600 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Camera size={12} /> Câmera
+                  </button>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    type="button"
+                    onClick={() => { triggerClick(); profileFileInputRef.current?.click(); }}
+                    className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    📁 Galeria
+                  </button>
+                </div>
                 
                 <div className="font-bold text-xs text-slate-700 mt-2 uppercase tracking-wide leading-none">
                   {userProfile.completedLessonsCount} Lições Feitas
@@ -1914,6 +1981,17 @@ export default function App() {
                           }}
                           className="hidden"
                         />
+                        <input
+                          ref={profileFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleProfileImageFile(e.target.files[0]);
+                            }
+                          }}
+                          className="hidden"
+                        />
                       </div>
                     )}
                   </div>
@@ -2328,22 +2406,80 @@ export default function App() {
 
               <div className="space-y-6">
                 
-                {/* Section 1: Child's Identity */}
-                <div className="space-y-2 text-left">
-                  <label className="block text-sm font-bold text-slate-700">
-                    Seu Nome no Painel:
-                  </label>
-                  <input
-                    type="text"
-                    value={userProfile.displayName}
-                    onChange={async (e) => {
-                      const updated = { ...userProfile, displayName: e.target.value };
-                      setUserProfile(updated);
-                      await saveUserProfile(updated);
-                    }}
-                    placeholder="Nome do escritor..."
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-amber-400 focus:outline-none font-medium text-base transition-colors bg-slate-50/50"
-                  />
+                {/* Section 1: User Identity & Photo */}
+                <div className="space-y-4 text-left border-b border-slate-100 pb-6">
+                  <h4 className="font-display font-extrabold text-base text-slate-800 flex items-center gap-2">
+                    👤 Perfil e Fotografia
+                  </h4>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-6 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                    <div className="relative w-24 h-24 rounded-full overflow-hidden border-3 border-amber-300 shadow-md shrink-0">
+                      <img 
+                        src={userProfile.customPhotoURL || userProfile.photoURL} 
+                        alt={userProfile.displayName} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    <div className="space-y-3 flex-1 w-full">
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-600 uppercase tracking-wider mb-1.5">
+                          Foto de Perfil ({userProfile.role === "aluno" ? "Aluno" : "Tutor"}):
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { triggerClick(); setShowCameraCapture(true); }}
+                            className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Camera size={14} /> Tirar Foto na Hora 📸
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { triggerClick(); profileFileInputRef.current?.click(); }}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            📁 Escolher da Galeria
+                          </button>
+                          {userProfile.customPhotoURL && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                triggerClick();
+                                const updated = { ...userProfile, customPhotoURL: undefined };
+                                await saveUpdatedProfile(updated);
+                              }}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs px-3 py-2 rounded-xl transition-all cursor-pointer"
+                            >
+                              🔄 Usar Avatar Padrão
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-600 uppercase tracking-wider mb-1">
+                          Nome Exibido no Painel:
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={userProfile.displayName}
+                            onChange={async (e) => {
+                              const newName = e.target.value;
+                              const updated = { ...userProfile, displayName: newName };
+                              await saveUpdatedProfile(updated);
+                            }}
+                            placeholder="Digite o nome..."
+                            className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-amber-400 focus:outline-none font-bold text-slate-800 text-sm bg-white"
+                          />
+                          <span className="absolute right-3 top-2.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                            Salvo automaticamente ✨
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Section 2: Visual Themes */}

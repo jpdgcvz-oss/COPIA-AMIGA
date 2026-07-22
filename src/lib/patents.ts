@@ -97,7 +97,7 @@ export function getPatent(score: number): PatentInfo {
     const levelIndex = Math.floor(score / 10);
     return {
       scoreMin: score,
-      name: `Lenda do Copy Play Nível ${levelIndex - 9}`,
+      name: `Lenda do CopyPlay Nível ${levelIndex - 9}`,
       emoji: "👑",
       color: "bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-950 border-amber-400 animate-pulse",
       description: "Você se tornou uma verdadeira lenda mítica da cópia caprichada! O rei de todas as histórias! 👑✨"
