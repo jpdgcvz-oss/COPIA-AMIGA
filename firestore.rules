@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation helper for UserProfile
+    function isValidUserProfile(data) {
+      return data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 128
+        && data.displayName is string && data.displayName.size() <= 100
+        && data.role in ['aluno', 'tutor', 'professor']
+        && data.score is int && data.score >= 0
+        && data.level is int && data.level >= 1
+        && data.completedLessonsCount is int && data.completedLessonsCount >= 0
+        && (!('linkedTeacherUid' in data) || (data.linkedTeacherUid is string && data.linkedTeacherUid.size() <= 128))
+        && (!('code' in data) || (data.code is string && data.code.size() <= 10))
+        && (!('customPhotoURL' in data) || (data.customPhotoURL is string && data.customPhotoURL.size() <= 2000));
+    }
+
+    // Validation helper for AdaptedLesson
+    function isValidAdaptedLesson(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.adaptedExplanation is string && data.adaptedExplanation.size() <= 2000
+        && data.chunks is list && data.chunks.size() <= 50
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.originalInputType in ['image', 'text']
+        && data.createdByUid == request.auth.uid;
+    }
+
+    // Validation helper for ActivityLog
+    function isValidActivityLog(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.studentUid == request.auth.uid
+        && data.studentName is string && data.studentName.size() <= 100
+        && data.lessonId is string && data.lessonId.size() <= 128
+        && data.lessonTitle is string && data.lessonTitle.size() <= 200
+        && data.completedAt is string && data.completedAt.size() <= 100
+        && data.durationSeconds is int && data.durationSeconds >= 0
+        && data.totalChunks is int && data.totalChunks >= 0
+        && data.totalCharacters is int && data.totalCharacters >= 0
+        && data.scoreEarned is int && data.scoreEarned >= 0
+        && data.avgTimePerChunk is int && data.avgTimePerChunk >= 0;
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
+
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedTeacherUid']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'level', 'completedLessonsCount']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'customPhotoURL', 'role', 'code'])
+      );
+    }
+
+    // Lessons Rules
+    match /lessons/{lessonId} {
+      allow get, list: if isSignedIn();
+      
+      allow create: if isSignedIn() && isValidAdaptedLesson(request.resource.data);
+      
+      allow delete: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
+    }
+
+    // Activity Logs Rules
+    match /activityLogs/{logId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.studentUid == request.auth.uid || 
+        get(/databases/$(database)/documents/users/$(resource.data.studentUid)).data.linkedTeacherUid == request.auth.uid
+      );
+
+      allow create: if isSignedIn() && isValidActivityLog(request.resource.data);
+    }
+  }
+}

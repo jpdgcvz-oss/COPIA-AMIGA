@@ -11,6 +11,7 @@ export interface AdaptedLesson {
   chunks: AdaptedChunk[];
   createdAt: string;
   originalInputType: "image" | "text";
+  createdByUid?: string; // Added to trace who created the lesson
 }
 
 export interface UserProgress {
@@ -30,4 +31,35 @@ export interface AppSettings {
   chunkPreference: ChunkPreferenceType;
   enableAudio: boolean;
   enableSoundEffects: boolean;
+  highContrast: boolean; // Added for accessibility
+}
+
+export interface ActivityLog {
+  id: string;
+  studentUid: string;
+  studentName: string;
+  lessonId: string;
+  lessonTitle: string;
+  completedAt: string; // ISO string
+  durationSeconds: number;
+  totalChunks: number;
+  totalCharacters: number;
+  scoreEarned: number;
+  avgTimePerChunk: number;
+}
+
+export type UserRole = "aluno" | "tutor" | "professor";
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+  role: UserRole;
+  code?: string; // For teachers: linking code
+  linkedTeacherUid?: string; // For students: linked teacher's UID
+  score: number;
+  level: number;
+  completedLessonsCount: number;
+  customPhotoURL?: string; // Profile picture from camera
 }

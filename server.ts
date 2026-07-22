@@ -96,7 +96,7 @@ Seu retorno deve ser exclusivamente um objeto JSON correspondente a este esquema
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.6-flash",
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -152,6 +152,67 @@ Seu retorno deve ser exclusivamente um objeto JSON correspondente a este esquema
     console.error("Erro ao processar conteúdo escolar:", error);
     return res.status(500).json({
       error: "Ocorreu um erro ao processar o conteúdo. Certifique-se de que a imagem é legível ou tente novamente.",
+      details: error.message,
+    });
+  }
+});
+
+// API Endpoint to adjust speech coherence and synthesize/correct text
+app.post("/api/adjust-speech-coherence", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: "Por favor, envie o texto falado." });
+    }
+
+    const ai = getGeminiClient();
+
+    const systemInstruction = `Você é um tutor e psicopedagogo especializado em TEA (Autismo) e TDAH.
+Sua missão é receber um texto que foi transcrito por reconhecimento de voz (o qual pode ter palavras duplicadas, repetições causadas por hesitação ou ecos do microfone, erros de gramática, falta de pontuação ou falta de coerência) e ajustá-lo.
+
+Siga estas instruções rigorosamente:
+1. Remova palavras duplicadas ou repetições seguidas geradas por hesitação ou eco (ex: "casa casa", "eu quero eu quero ir ir").
+2. Ajuste a coerência, corrija erros de pronúncia ou ortografia.
+3. Deixe o texto fluído, bonito, claro, curto e com pontuação adequada.
+4. Escreva em um tom carinhoso, positivo e direto. Adicione de 1 a 2 emojis fofos para motivar o estudante.
+5. NÃO altere o sentido original do que o aluno respondeu. Se for uma resposta a uma pergunta, apenas a organize para que fique bonita e legível para cópia posterior.
+
+Retorne exclusivamente um objeto JSON correspondente a este esquema:
+{
+  "adjustedText": "Texto corrigido e adaptado aqui de forma coerente e fluída."
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: `Ajuste a coerência e corrija as repetições/duplicações do seguinte texto de voz de um aluno: "${text}"`,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["adjustedText"],
+          properties: {
+            adjustedText: {
+              type: Type.STRING,
+              description: "O texto adaptado, limpo de duplicidades, coerente e com pontuação correta.",
+            },
+          },
+        },
+      },
+    });
+
+    const resultText = response.text;
+    if (!resultText) {
+      throw new Error("Não foi possível gerar a resposta do Gemini.");
+    }
+
+    const parsedResult = JSON.parse(resultText.trim());
+    return res.json(parsedResult);
+
+  } catch (error: any) {
+    console.error("Erro ao ajustar coerência de voz:", error);
+    return res.status(500).json({
+      error: "Ocorreu um erro ao processar a fala com inteligência artificial.",
       details: error.message,
     });
   }

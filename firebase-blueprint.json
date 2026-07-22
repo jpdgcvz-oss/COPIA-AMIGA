@@ -1,0 +1,173 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile containing roles, scores, levels, and linking information.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique identifier of the user (same as Auth UID)"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User's email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User's display name"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL of the user's avatar"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["aluno", "tutor", "professor"],
+          "description": "The user's role: student, tutor, or teacher"
+        },
+        "code": {
+          "type": "string",
+          "description": "For teachers/tutors: unique linking code"
+        },
+        "linkedTeacherUid": {
+          "type": "string",
+          "description": "For students: linked teacher/tutor's UID"
+        },
+        "score": {
+          "type": "integer",
+          "description": "Accumulated score for rewards and levels"
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current gamification level"
+        },
+        "completedLessonsCount": {
+          "type": "integer",
+          "description": "Number of completed lessons"
+        },
+        "customPhotoURL": {
+          "type": "string",
+          "description": "Custom photo taken via camera or uploaded"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "score", "level", "completedLessonsCount"]
+    },
+    "AdaptedLesson": {
+      "title": "AdaptedLesson",
+      "description": "A lesson parsed into simplified bite-sized chunks tailored for copying.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique lesson ID"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the lesson"
+        },
+        "adaptedExplanation": {
+          "type": "string",
+          "description": "Brief simplified explanation of the lesson context"
+        },
+        "chunks": {
+          "type": "array",
+          "description": "List of bite-sized chunks for the student to copy"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the lesson was created"
+        },
+        "originalInputType": {
+          "type": "string",
+          "enum": ["image", "text"],
+          "description": "Source type of the original material"
+        },
+        "createdByUid": {
+          "type": "string",
+          "description": "UID of the tutor who created this custom lesson"
+        }
+      },
+      "required": ["id", "title", "adaptedExplanation", "chunks", "createdAt", "originalInputType"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "A log documenting a student's completion of a lesson.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique log ID"
+        },
+        "studentUid": {
+          "type": "string",
+          "description": "UID of the student"
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Name of the student"
+        },
+        "lessonId": {
+          "type": "string",
+          "description": "ID of the completed lesson"
+        },
+        "lessonTitle": {
+          "type": "string",
+          "description": "Title of the completed lesson"
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "ISO timestamp of completion"
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Duration in seconds to complete the copy"
+        },
+        "totalChunks": {
+          "type": "integer",
+          "description": "Total chunks in the lesson"
+        },
+        "totalCharacters": {
+          "type": "integer",
+          "description": "Total characters in the text copied"
+        },
+        "scoreEarned": {
+          "type": "integer",
+          "description": "Gamification stars earned"
+        },
+        "avgTimePerChunk": {
+          "type": "integer",
+          "description": "Average focus time spent per chunk in seconds"
+        }
+      },
+      "required": [
+        "id",
+        "studentUid",
+        "studentName",
+        "lessonId",
+        "lessonTitle",
+        "completedAt",
+        "durationSeconds",
+        "totalChunks",
+        "totalCharacters",
+        "scoreEarned",
+        "avgTimePerChunk"
+      ]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles containing roles, gamification, and tutor linking codes."
+    },
+    "lessons/{lessonId}": {
+      "schema": "AdaptedLesson",
+      "description": "Teacher-created customized simplified lessons."
+    },
+    "activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Detailed activity tracking logs of completed lessons."
+    }
+  }
+}
