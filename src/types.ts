@@ -48,6 +48,19 @@ export interface ActivityLog {
   avgTimePerChunk: number;
 }
 
+export type LetterMaskType = "vogais" | "consoantes";
+export type AppLanguage = "pt-BR" | "en-US";
+
+export interface FillLettersLesson {
+  id: string;
+  title: string;
+  text: string;
+  maskMode: LetterMaskType;
+  language: AppLanguage;
+  createdAt: string;
+  createdByUid?: string;
+}
+
 export type UserRole = "aluno" | "tutor" | "professor";
 
 export interface UserProfile {

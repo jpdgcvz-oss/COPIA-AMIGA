@@ -33,13 +33,27 @@ import {
   Info
 } from "lucide-react";
 
-import { AdaptedLesson, AdaptedChunk, UserProgress, AppSettings, ThemeType, ChunkPreferenceType, UserRole, UserProfile, ActivityLog } from "./types";
+import { 
+  AdaptedLesson, 
+  AdaptedChunk, 
+  UserProgress, 
+  AppSettings, 
+  ThemeType, 
+  ChunkPreferenceType, 
+  UserRole, 
+  UserProfile, 
+  ActivityLog,
+  FillLettersLesson 
+} from "./types";
 import { DEMO_LESSONS, THEMES, GENERAL_PRAISES, getLevelInfo } from "./lib/constants";
+import { DEMO_FILL_LETTERS_LESSONS } from "./data/fillLettersDemos";
 import { playClickSound, playCoinSound, playLevelUpSound } from "./lib/sound";
 import { speakText, stopSpeaking, isSpeaking } from "./lib/tts";
 import EmojiShower from "./components/EmojiShower";
 import CameraCapture from "./components/CameraCapture";
 import LessonCameraCapture from "./components/LessonCameraCapture";
+import { FillLettersViewer } from "./components/FillLettersViewer";
+import { CreateFillLettersForm } from "./components/CreateFillLettersForm";
 import { getPatent } from "./lib/patents";
 import { auth, googleProvider, signInWithPopup, signOut } from "./lib/firebase";
 import { signInAnonymously } from "firebase/auth";
@@ -52,7 +66,9 @@ import {
   createTeacherLesson, 
   getTeacherLessons,
   saveActivityLog,
-  getStudentActivityLogs
+  getStudentActivityLogs,
+  getFillLettersLessons,
+  createFillLettersLesson
 } from "./lib/db";
 // @ts-ignore
 import copyPlayLogo from "./assets/images/copyplay_logo_1784682180144.jpg";
@@ -102,12 +118,36 @@ export default function App() {
     }
   };
 
+  // Helper for fill letters lessons storage
+  const getStoredFillLessons = (): FillLettersLesson[] => {
+    try {
+      const raw = localStorage.getItem("copy_play_fill_letters_lessons");
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const saveFillLessonToStorage = (lesson: FillLettersLesson) => {
+    try {
+      const current = getStoredFillLessons();
+      const updated = [lesson, ...current.filter(l => l.id !== lesson.id)];
+      localStorage.setItem("copy_play_fill_letters_lessons", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save fill letters lesson to local storage", e);
+    }
+  };
+
   // State for merged lessons (demo + teacher-created + custom-local)
   const [lessons, setLessons] = useState<AdaptedLesson[]>(DEMO_LESSONS);
   const [teacherCreatedLessons, setTeacherCreatedLessons] = useState<AdaptedLesson[]>([]);
 
+  // State for fill letters lessons
+  const [fillLettersLessons, setFillLettersLessons] = useState<FillLettersLesson[]>(DEMO_FILL_LETTERS_LESSONS);
+  const [activeFillLesson, setActiveFillLesson] = useState<FillLettersLesson | null>(null);
+
   // Navigation and UI state
-  const [activeScreen, setActiveScreen] = useState<"welcome" | "home" | "lesson-viewer" | "add-lesson" | "settings" | "voice-answer">("welcome");
+  const [activeScreen, setActiveScreen] = useState<"welcome" | "home" | "lesson-viewer" | "add-lesson" | "settings" | "voice-answer" | "fill-letters-viewer" | "create-fill-letters">("welcome");
   const [tutorViewMode, setTutorViewMode] = useState<"tutor" | "aluno">("tutor");
 
   // Add lesson form states
@@ -153,8 +193,8 @@ export default function App() {
   // Confetti / particle trigger
   const [confettiTrigger, setConfettiTrigger] = useState(0);
 
-  // Voice-to-Text States
-  const [studentTab, setStudentTab] = useState<"copia" | "voice">("copia");
+  // Voice-to-Text & Fill-in-Letters States
+  const [studentTab, setStudentTab] = useState<"copia" | "voice" | "fill">("copia");
   const [voiceTextRaw, setVoiceTextRaw] = useState("");
   const [voiceTextAdjusted, setVoiceTextAdjusted] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -354,6 +394,39 @@ export default function App() {
     });
     setLessons([...teacherAndStudent, ...DEMO_LESSONS]);
   }, [teacherCreatedLessons]);
+
+  // Load and merge Fill-in-Letters lessons
+  useEffect(() => {
+    const loadFillLessons = async () => {
+      const localFill = getStoredFillLessons();
+      let remoteFill: FillLettersLesson[] = [];
+      if (userProfile?.linkedTeacherUid) {
+        try {
+          remoteFill = await getFillLettersLessons(userProfile.linkedTeacherUid);
+        } catch (e) {
+          console.error("Error loading remote fill lessons:", e);
+        }
+      } else if (userProfile?.uid && (userProfile.role === "tutor" || userProfile.role === "professor")) {
+        try {
+          remoteFill = await getFillLettersLessons(userProfile.uid);
+        } catch (e) {
+          console.error("Error loading tutor fill lessons:", e);
+        }
+      }
+
+      const combinedMap = new Map<string, FillLettersLesson>();
+      // Base demo lessons
+      DEMO_FILL_LETTERS_LESSONS.forEach(l => combinedMap.set(l.id, l));
+      // Local stored lessons
+      localFill.forEach(l => combinedMap.set(l.id, l));
+      // Remote lessons
+      remoteFill.forEach(l => combinedMap.set(l.id, l));
+
+      setFillLettersLessons(Array.from(combinedMap.values()));
+    };
+
+    loadFillLessons();
+  }, [userProfile]);
 
   // Handle Google Login (Gmail)
   const handleGoogleLogin = async (role: UserRole) => {
@@ -813,6 +886,41 @@ export default function App() {
       setProcessError(error.message || "Não foi possível ler esta foto. Tente tirar outra foto mais nítida ou digite o texto.");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Handler for creating a new Fill Letters / Vogais e Consoantes activity
+  const handleSaveFillLesson = async (newLesson: FillLettersLesson) => {
+    playCoinSound(settings.enableAudio);
+    setFillLettersLessons(prev => [newLesson, ...prev.filter(l => l.id !== newLesson.id)]);
+    saveFillLessonToStorage(newLesson);
+
+    if (userProfile?.uid && (userProfile.role === "tutor" || userProfile.role === "professor")) {
+      try {
+        await createFillLettersLesson(userProfile.uid, newLesson);
+      } catch (e) {
+        console.error("Error saving fill lesson to firestore:", e);
+      }
+      alert("Atividade de Vogais e Consoantes criada com sucesso! Ela foi enviada para todos os seus alunos! 🔤✨");
+    }
+
+    setActiveScreen("home");
+    setStudentTab("fill");
+  };
+
+  // Handler for completing a Fill Letters activity
+  const handleFillComplete = async (earnedScore: number) => {
+    playCoinSound(settings.enableAudio);
+    playLevelUpSound(settings.enableAudio);
+    setConfettiTrigger(prev => prev + 1);
+
+    if (userProfile) {
+      const updatedProfile: UserProfile = {
+        ...userProfile,
+        score: userProfile.score + earnedScore,
+        completedLessonsCount: userProfile.completedLessonsCount + 1
+      };
+      await saveUpdatedProfile(updatedProfile);
     }
   };
 
@@ -1334,11 +1442,11 @@ export default function App() {
             </div>
 
             {/* SEPARATED FUNCTIONS SELECTOR TABS */}
-            <div className="flex p-1.5 bg-slate-100 border border-slate-200/50 rounded-2xl gap-2 w-full max-w-xl mx-auto">
+            <div className="flex p-1.5 bg-slate-100 border border-slate-200/50 rounded-2xl gap-2 w-full max-w-2xl mx-auto">
               <button
                 id="tab-copia-tradicional"
                 onClick={() => { triggerClick(); stopSpeechRecording(); setStudentTab("copia"); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-display font-black text-sm transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 px-3.5 rounded-xl font-display font-black text-xs md:text-sm transition-all cursor-pointer ${
                   studentTab === "copia"
                     ? settings.highContrast
                       ? "bg-yellow-400 text-slate-950 shadow-md"
@@ -1351,9 +1459,24 @@ export default function App() {
                 ✍️ Treino de Cópia
               </button>
               <button
+                id="tab-completar-letras"
+                onClick={() => { triggerClick(); stopSpeechRecording(); setStudentTab("fill"); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 px-3.5 rounded-xl font-display font-black text-xs md:text-sm transition-all cursor-pointer ${
+                  studentTab === "fill"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-slate-950 shadow-md"
+                      : "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md hover:scale-[1.01]"
+                    : settings.highContrast
+                      ? "text-slate-400 hover:text-white"
+                      : "text-slate-500 hover:text-purple-700"
+                }`}
+              >
+                🔤 Completar Letras
+              </button>
+              <button
                 id="tab-falar-copiar"
                 onClick={() => { triggerClick(); setStudentTab("voice"); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-display font-black text-sm transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 px-3.5 rounded-xl font-display font-black text-xs md:text-sm transition-all cursor-pointer ${
                   studentTab === "voice"
                     ? settings.highContrast
                       ? "bg-yellow-400 text-slate-950 shadow-md"
@@ -1693,6 +1816,73 @@ export default function App() {
               </div>
             )}
 
+            {/* FILL LETTERS / VOGAIS E CONSOANTES TAB */}
+            {studentTab === "fill" && (
+              <div id="tab-content-fill" className="space-y-6 w-full animate-fade-in text-slate-800">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 rounded-3xl shadow-sm">
+                  <div className="space-y-1 text-left">
+                    <span className="bg-white/20 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider inline-block">
+                      Desafio Mágico de Vogais e Consoantes 🔤
+                    </span>
+                    <h3 className="font-display font-black text-2xl">
+                      Completar Letras & Ouvir Áudio
+                    </h3>
+                    <p className="text-purple-100 text-xs font-semibold max-w-lg leading-relaxed">
+                      Clique nas palavras para ouvir o som 🔊 e preencha as letras que faltam! Você pode alternar entre Português e Inglês quando quiser.
+                    </p>
+                  </div>
+                  {(userProfile?.role === "tutor" || userProfile?.role === "professor") && (
+                    <button
+                      onClick={() => { triggerClick(); setActiveScreen("create-fill-letters"); }}
+                      className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-display font-black text-xs px-5 py-3 rounded-2xl shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                    >
+                      <Plus size={16} /> Criar Atividade 🔤
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {fillLettersLessons.map((fillLesson) => (
+                    <div
+                      key={fillLesson.id}
+                      onClick={() => {
+                        triggerClick();
+                        setActiveFillLesson(fillLesson);
+                        setActiveScreen("fill-letters-viewer");
+                      }}
+                      className="bg-white hover:bg-purple-50/50 border-2 border-slate-200 hover:border-purple-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-4 group text-left"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-display font-bold text-base text-slate-800 group-hover:text-purple-700 transition-colors">
+                            {fillLesson.title}
+                          </span>
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 ${
+                            fillLesson.language === "en-US" ? "bg-indigo-100 text-indigo-800" : "bg-amber-100 text-amber-800"
+                          }`}>
+                            {fillLesson.language === "en-US" ? "🇺🇸 Inglês" : "🇧🇷 Português"}
+                          </span>
+                        </div>
+
+                        <p className="text-slate-600 text-xs line-clamp-2 italic font-medium bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                          "{fillLesson.text}"
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3 gap-2">
+                        <span className="font-extrabold text-[11px] text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg">
+                          {fillLesson.maskMode === "consoantes" ? "👁️ Exibe Consoantes" : "👁️ Exibe Vogais"}
+                        </span>
+                        <span className="bg-purple-600 group-hover:bg-purple-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all">
+                          Jogar 🚀
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -1752,7 +1942,7 @@ export default function App() {
             </div>
 
             {/* ACTION TRIGGERS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Option: Go to Practice Area (Student Mode) */}
               <div 
                 id="box-practice-mode"
@@ -1767,7 +1957,7 @@ export default function App() {
                     Abra o portal do aluno para experimentar a cópia, jogar lições, usar o foco e ganhar estrelas!
                   </p>
                 </div>
-                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform shrink-0">
                   🎒
                 </div>
               </div>
@@ -1786,8 +1976,27 @@ export default function App() {
                     Tire foto de uma folha de livro ou digite um texto. Ele será dividido em pedaços e enviado a todos os alunos!
                   </p>
                 </div>
-                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform shrink-0">
                   📸
+                </div>
+              </div>
+
+              {/* Option: Create Fill Letters Lesson */}
+              <div 
+                id="box-create-fill-lesson"
+                onClick={() => { triggerClick(); setActiveScreen("create-fill-letters"); }}
+                className="bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-3xl p-6 cursor-pointer shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 group flex items-center justify-between"
+              >
+                <div className="space-y-2">
+                  <h4 className="font-display font-bold text-lg flex items-center gap-2 text-white">
+                    Criar Atividade de Letras <Plus size={20} />
+                  </h4>
+                  <p className="text-purple-100 text-xs font-medium leading-normal max-w-xs text-left">
+                    Crie frases onde aparecem apenas vogais ou consoantes, com leitura de palavras em áudio e opção para inglês!
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform shrink-0">
+                  🔤
                 </div>
               </div>
             </div>
@@ -2649,6 +2858,40 @@ export default function App() {
 
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ==================================== */}
+        {/* FILL LETTERS PLAYER SCREEN           */}
+        {/* ==================================== */}
+        {activeScreen === "fill-letters-viewer" && activeFillLesson && (
+          <div id="screen-fill-letters-viewer" className="w-full animate-fade-in">
+            <FillLettersViewer
+              lesson={activeFillLesson}
+              settings={settings}
+              onBack={() => {
+                triggerClick();
+                setActiveScreen("home");
+              }}
+              onComplete={handleFillComplete}
+              triggerClickSound={triggerClick}
+            />
+          </div>
+        )}
+
+        {/* ==================================== */}
+        {/* CREATE FILL LETTERS FORM SCREEN      */}
+        {/* ==================================== */}
+        {activeScreen === "create-fill-letters" && (
+          <div id="screen-create-fill-letters" className="w-full max-w-2xl mx-auto animate-fade-in">
+            <CreateFillLettersForm
+              onSave={handleSaveFillLesson}
+              onBack={() => {
+                triggerClick();
+                setActiveScreen("home");
+              }}
+              triggerClickSound={triggerClick}
+            />
           </div>
         )}
 

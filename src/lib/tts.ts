@@ -11,6 +11,7 @@ export function speakText(
     enabled: boolean;
     rate?: number;
     pitch?: number;
+    lang?: string;
     onStart?: () => void;
     onEnd?: () => void;
     onError?: (err: any) => void;
@@ -24,9 +25,10 @@ export function speakText(
     // Cancel any active speech
     window.speechSynthesis.cancel();
 
+    const lang = options.lang || "pt-BR";
     // Create a new utterance
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "pt-BR";
+    utterance.lang = lang;
     
     // Configure voice properties
     utterance.rate = options.rate ?? 0.82; // Slower for comprehension
@@ -34,12 +36,11 @@ export function speakText(
 
     // Statically retrieve voices
     const voices = window.speechSynthesis.getVoices();
-    // Prefer Brazilian Portuguese voices
-    const brVoice = voices.find(
-      (v) => v.lang === "pt-BR" || v.lang.startsWith("pt")
+    const targetVoice = voices.find(
+      (v) => v.lang === lang || v.lang.startsWith(lang.substring(0, 2))
     );
-    if (brVoice) {
-      utterance.voice = brVoice;
+    if (targetVoice) {
+      utterance.voice = targetVoice;
     }
 
     // Set callbacks

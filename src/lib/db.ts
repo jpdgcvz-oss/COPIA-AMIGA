@@ -10,7 +10,7 @@ import {
   addDoc
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { UserProfile, AdaptedLesson, ActivityLog } from "../types";
+import { UserProfile, AdaptedLesson, ActivityLog, FillLettersLesson } from "../types";
 
 export enum OperationType {
   CREATE = 'create',
@@ -211,6 +211,52 @@ export async function getTeacherLessons(teacherUid: string): Promise<AdaptedLess
   } catch (error) {
     console.error("Error fetching teacher lessons:", error);
     handleFirestoreError(error, OperationType.LIST, "lessons");
+  }
+}
+
+/**
+ * Saves a FillLettersLesson created by a teacher
+ */
+export async function createFillLettersLesson(
+  teacherUid: string, 
+  lesson: FillLettersLesson
+): Promise<void> {
+  try {
+    const lessonDocRef = doc(db, "fill_letters_lessons", lesson.id);
+    await setDoc(lessonDocRef, {
+      ...lesson,
+      createdByUid: teacherUid
+    });
+  } catch (error) {
+    console.error("Error saving fill letters lesson:", error);
+    handleFirestoreError(error, OperationType.WRITE, `fill_letters_lessons/${lesson.id}`);
+  }
+}
+
+/**
+ * Fetches all FillLettersLessons created by a teacher or available
+ */
+export async function getFillLettersLessons(teacherUid?: string): Promise<FillLettersLesson[]> {
+  try {
+    let q;
+    if (teacherUid) {
+      q = query(
+        collection(db, "fill_letters_lessons"), 
+        where("createdByUid", "==", teacherUid)
+      );
+    } else {
+      q = query(collection(db, "fill_letters_lessons"));
+    }
+    
+    const querySnapshot = await getDocs(q);
+    const lessons: FillLettersLesson[] = [];
+    querySnapshot.forEach((docSnap) => {
+      lessons.push(docSnap.data() as FillLettersLesson);
+    });
+    return lessons;
+  } catch (error) {
+    console.error("Error fetching fill letters lessons:", error);
+    handleFirestoreError(error, OperationType.LIST, "fill_letters_lessons");
   }
 }
 
